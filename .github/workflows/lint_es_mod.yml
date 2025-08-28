@@ -95,7 +95,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Run Text Linter
-        uses: zImpact/renpy_text_linter@v1.0.11
+        uses: zImpact/renpy_text_linter@v1.0.12
         with:
           files: "${{ inputs.grammar_check_files }}"
           exclusions: "${{ inputs.exclusions }}"
