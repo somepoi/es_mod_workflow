@@ -78,7 +78,7 @@ jobs:
     needs: download-tools
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6.0.2
 
       - name: Run Marker Linter
         uses: zImpact/renpy_marker_linter@v1.0.2
@@ -92,10 +92,10 @@ jobs:
     needs: download-tools
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6.0.2
 
       - name: Run Text Linter
-        uses: zImpact/renpy_text_linter@v1.0.12
+        uses: zImpact/renpy_text_linter@v1.0.13
         with:
           files: "${{ inputs.grammar_check_files }}"
           exclusions: "${{ inputs.exclusions }}"
@@ -107,18 +107,18 @@ jobs:
     needs: download-tools
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6.0.2
 
       - name: Set up cache for SDK
         id: cache-sdk
-        uses: actions/cache@v3
+        uses: actions/cache@v5.0.5
         with:
           path: "~/.renpy-sdk"
           key: ${{ runner.os }}-renpy-sdk-${{ inputs.sdk_version }}
 
       - name: Set up cache for Game
         id: cache-game
-        uses: actions/cache@v3
+        uses: actions/cache@v5.0.5
         with:
           path: "./game_files"
           key: ${{ runner.os }}-everlasting-summer-${{ inputs.es_ver }}-${{ inputs.google_drive_id }}
@@ -147,7 +147,7 @@ jobs:
     needs: download-tools
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6.0.2
 
       - name: Run Code Linter
         uses: zImpact/renpy_code_linter@v1.0.1

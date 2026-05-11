@@ -61,10 +61,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6.0.2
 
       - name: Checkout scripts
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6.0.2
         with:
           repository: zImpact/es_mod_workflow
           path: scripts
@@ -83,14 +83,14 @@ jobs:
       
       - name: Set up cache for SDK
         id: cache-sdk
-        uses: actions/cache@v3
+        uses: actions/cache@v5.0.5
         with:
           path: "~/.renpy-sdk"
           key: ${{ runner.os }}-renpy-sdk-${{ inputs.sdk_version }}
 
       - name: Set up cache for Everlasting Summer game files
         id: cache-game
-        uses: actions/cache@v3
+        uses: actions/cache@v5.0.5
         with:
           path: "./game_files"
           key: ${{ runner.os }}-everlasting-summer-${{ inputs.es_ver }}-${{ inputs.google_drive_id }}
