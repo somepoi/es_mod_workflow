@@ -1,0 +1,66 @@
+# Локальный запуск converter/uploader для любого мода.
+# Использование:
+#   PROJECT_NAME=mymod docker-compose up converter
+#   PROJECT_NAME=mymod docker-compose --profile archive up
+#   PROJECT_NAME=mymod MEGA_USERNAME=... MEGA_PASSWORD=... docker-compose --profile upload-mega up
+
+services:
+  converter:
+    image: ghcr.io/${IMAGE_OWNER:-somepoi}/es_mod_workflow-estool-converter:${IMAGE_TAG:-latest}
+    container_name: ${PROJECT_NAME:?PROJECT_NAME env var is required}-converter
+    volumes:
+      - .:/app/source:ro
+      - ./output:/output
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PROJECT_NAME=${PROJECT_NAME}
+    restart: "no"
+
+  upload-mega:
+    image: ghcr.io/${IMAGE_OWNER:-somepoi}/es_mod_workflow-megacmd:${IMAGE_TAG:-latest}
+    container_name: ${PROJECT_NAME:?PROJECT_NAME env var is required}-upload-mega
+    depends_on:
+      converter:
+        condition: service_completed_successfully
+    volumes:
+      - ./output:/data
+    environment:
+      - PROJECT_NAME=${PROJECT_NAME}
+      - MEGA_USERNAME=${MEGA_USERNAME}
+      - MEGA_PASSWORD=${MEGA_PASSWORD}
+      - MEGA_FOLDER=${MEGA_FOLDER:-/}
+    command: >
+      sh -c '
+        set -e &&
+        mega-login "$$MEGA_USERNAME" "$$MEGA_PASSWORD" &&
+        cd /data &&
+        zip -r "$${PROJECT_NAME}.zip" "$${PROJECT_NAME}" &&
+        mega-put "$${PROJECT_NAME}.zip" "$$MEGA_FOLDER" &&
+        MEGA_URL=$$(mega-export -a "$$MEGA_FOLDER/$${PROJECT_NAME}.zip" | grep -o "https.*") &&
+        echo "Uploaded to MEGA: $$MEGA_URL" &&
+        mega-logout
+      '
+    restart: "no"
+    profiles:
+      - upload-mega
+
+  archiver:
+    image: alpine:latest
+    container_name: ${PROJECT_NAME:?PROJECT_NAME env var is required}-archiver
+    depends_on:
+      converter:
+        condition: service_completed_successfully
+    volumes:
+      - ./output:/data
+    environment:
+      - PROJECT_NAME=${PROJECT_NAME}
+    command: >
+      sh -c '
+        apk add --no-cache zip &&
+        cd /data &&
+        zip -r "$${PROJECT_NAME}.zip" "$${PROJECT_NAME}" &&
+        echo "Archive created: /data/$${PROJECT_NAME}.zip"
+      '
+    restart: "no"
+    profiles:
+      - archive

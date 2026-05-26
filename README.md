@@ -178,6 +178,79 @@ jobs:
 ![image](https://github.com/user-attachments/assets/acb12306-9e40-4c12-b5a9-b045a7062116)
 
 
+## Сборка мобильного порта (workflow *build_mobile.yml*)
+Данный workflow прогоняет мод через [ESTool](ESTool/estool-1.001.py) — конвертирует мод в мобильную версию (транслитерация имён, сжатие картинок, ресайз координат и т.д.), архивирует результат в `<project_name>.zip` и опционально заливает архив на MEGA.
+
+Workflow использует два общих Docker-образа, которые собираются в этом репозитории и публикуются в GitHub Container Registry:
+* `ghcr.io/<owner>/es_mod_workflow-estool-converter` — Ubuntu 22.04 + Python + Pillow + ESTool
+* `ghcr.io/<owner>/es_mod_workflow-megacmd` — Ubuntu 22.04 + MEGAcmd CLI
+
+Образы билдятся автоматически workflow'ом *build_docker_images.yml* при изменении `*.Dockerfile`, `ESTool/**` или `docker-entrypoint.sh` в этом репозитории. Все моды используют одни и те же образы — конкретный мод выбирается параметром `project_name`.
+
+### Добавление workflow *build_mobile.yml* к себе в репозиторий
+1. (Опционально) Создание секретов для MEGA
+
+В настройках репозитория - `Settings -> Secrets and variables -> Actions -> Repository secrets` добавить:
+* `MEGA_USERNAME`: логин аккаунта MEGA
+* `MEGA_PASSWORD`: пароль
+* `MEGA_FOLDER`: путь к папке на MEGA, в которую загружать архив (например `/mods/pioneriada`)
+
+2. Создание файла вызова workflow
+
+В корне репозитория мода создаём `.github/workflows/build_mobile.yml`:
+```yml
+name: Build Mobile Port
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_mega:
+        description: "Загрузить архив на MEGA"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    uses: somepoi/es_mod_workflow/.github/workflows/build_mobile.yml@v3.0.3
+    with:
+      project_name: "pioneriada"                       # ОБЯЗАТЕЛЬНО: название мода
+      upload_to_mega: ${{ inputs.upload_to_mega }}     # Загружать ли на MEGA
+      image_owner: "somepoi"                           # GHCR-неймспейс с образами (по умолчанию somepoi)
+      image_tag: "latest"                              # Тег образов
+    secrets:
+      MEGA_USERNAME: ${{ secrets.MEGA_USERNAME }}
+      MEGA_PASSWORD: ${{ secrets.MEGA_PASSWORD }}
+      MEGA_FOLDER:   ${{ secrets.MEGA_FOLDER }}
+```
+
+3. Параметры workflow
+
+| Параметр | Тип | Обязательный | Назначение |
+| --- | --- | --- | --- |
+| `project_name` | string | да | Имя мода. Используется как: имя папки внутри `/app`, имя итогового архива (`<project_name>.zip`), `src_path`/`new_virtual_root` для ESTool. |
+| `upload_to_mega` | bool | нет (default `false`) | Запускать ли job загрузки на MEGA. |
+| `image_owner` | string | нет (default `somepoi`) | Владелец GHCR-неймспейса. Поменяйте, если форкнули es_mod_workflow и публикуете образы под своим аккаунтом. |
+| `image_tag` | string | нет (default `latest`) | Тег образа converter/megacmd. |
+| `artifact_retention_days` | number | нет (default `7`) | Сколько дней хранить артефакт с архивом. |
+
+4. Доступ к образам GHCR
+
+По умолчанию GHCR-пакеты создаются приватными. Чтобы их могли пуллить другие репозитории, нужно либо:
+* открыть пакету видимость `public` в `https://github.com/users/<owner>/packages/container/<package>/settings`, либо
+* в репозитории es_mod_workflow в настройках пакета добавить нужному репо мода доступ на чтение.
+
+### Локальный запуск конвертации
+В корне мода:
+```bash
+PROJECT_NAME=mymod docker-compose -f path/to/es_mod_workflow/docker-compose.yml up converter
+```
+Результат окажется в `./output/mymod/`. Чтобы дополнительно создать архив локально — добавить `--profile archive`.
+
+### Шаблон конфига ESTool
+Конкретные параметры конвертации (`rescale_coordinates`, `resize_images`, `exclude_patterns` и т.д.) задаются в [ESTool/config.template.py](ESTool/config.template.py). При запуске контейнера entrypoint подставляет в шаблон `${PROJECT_NAME}` / `${PROJECT_ANDROID}` и кладёт результат как `config.py`. Если для конкретного мода нужны нестандартные правила — стоит править именно шаблон в этом репозитории (он применится ко всем модам) или передавать готовый `config.py` через bind-mount.
+
 # Важные особенности
 1. Описание предмета, который будет загружен, берется из файла README.md в корне репозитория и конвертируется в Steam-формат с использованием библиотеки [`md2steam`](https://pypi.org/project/md2steam/1.0.1/)
 2. Если workflow *deploy_to_steam* используется отдельно от *lint_es_mod*, то важно в `deploy.yml` указать значение переменной `check_lint_status` равной `false`
+3. `build_mobile.yml` ничего не знает о Ren'Py SDK и архиве с игрой — он работает только с папкой мода. ESTool сам делает все нужные преобразования.

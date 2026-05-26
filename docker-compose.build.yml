@@ -1,0 +1,22 @@
+# Локальная сборка образов (если нужно обновить ESTool или MEGAcmd).
+# Использование: docker-compose -f docker-compose.build.yml build
+# Опционально: IMAGE_OWNER=youraccount IMAGE_TAG=dev docker-compose -f docker-compose.build.yml build
+
+services:
+  converter:
+    build:
+      context: .
+      dockerfile: estool.Dockerfile
+      labels:
+        - "org.opencontainers.image.title=ESTool Mobile Converter"
+        - "org.opencontainers.image.description=Конвертер модов в мобильный порт"
+    image: ghcr.io/${IMAGE_OWNER:-somepoi}/es_mod_workflow-estool-converter:${IMAGE_TAG:-latest}
+
+  megacmd:
+    build:
+      context: .
+      dockerfile: megacmd.Dockerfile
+      labels:
+        - "org.opencontainers.image.title=MEGAcmd Uploader"
+        - "org.opencontainers.image.description=Загрузчик файлов на MEGA"
+    image: ghcr.io/${IMAGE_OWNER:-somepoi}/es_mod_workflow-megacmd:${IMAGE_TAG:-latest}

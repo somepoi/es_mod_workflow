@@ -1,0 +1,139 @@
+name: Build Mobile Port
+
+# Reusable workflow для сборки мобильного порта любого мода ES.
+# Использует общие образы ghcr.io/<owner>/es_mod_workflow-estool-converter и -megacmd,
+# которые билдятся отдельно (см. build_docker_images.yml).
+
+on:
+  workflow_call:
+    inputs:
+      project_name:
+        description: "Название мода (определяет имя папки в /app, имя архива и virtual_root в ESTool)"
+        required: true
+        type: string
+      upload_to_mega:
+        description: "Загружать ли итоговый архив на MEGA"
+        required: false
+        type: boolean
+        default: false
+      image_owner:
+        description: "Владелец GHCR-неймспейса с образами es_mod_workflow-* (по умолчанию somepoi)"
+        required: false
+        type: string
+        default: "somepoi"
+      image_tag:
+        description: "Тег образов converter/megacmd"
+        required: false
+        type: string
+        default: "latest"
+      artifact_retention_days:
+        description: "Сколько дней хранить артефакт сборки"
+        required: false
+        type: number
+        default: 7
+    secrets:
+      MEGA_USERNAME:
+        description: "Логин MEGA"
+        required: false
+      MEGA_PASSWORD:
+        description: "Пароль MEGA"
+        required: false
+      MEGA_FOLDER:
+        description: "Папка на MEGA, в которую загрузить архив"
+        required: false
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  CONVERTER_IMAGE: ghcr.io/${{ inputs.image_owner }}/es_mod_workflow-estool-converter:${{ inputs.image_tag }}
+  MEGACMD_IMAGE: ghcr.io/${{ inputs.image_owner }}/es_mod_workflow-megacmd:${{ inputs.image_tag }}
+
+jobs:
+  converter:
+    name: Converter
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull converter image
+        run: docker pull "${CONVERTER_IMAGE}"
+
+      - name: Run mobile conversion
+        run: |
+          mkdir -p output
+          docker run --rm \
+            -e PROJECT_NAME='${{ inputs.project_name }}' \
+            -v "${{ github.workspace }}:/app/source:ro" \
+            -v "${{ github.workspace }}/output:/output" \
+            "${CONVERTER_IMAGE}"
+
+      - name: Create archive
+        run: |
+          cd output
+          zip -r "../${{ inputs.project_name }}.zip" "${{ inputs.project_name }}"
+
+      - name: Upload archive as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.project_name }}_mobile
+          path: ${{ inputs.project_name }}.zip
+          retention-days: ${{ inputs.artifact_retention_days }}
+
+  upload-mega:
+    name: Upload MEGA
+    runs-on: ubuntu-latest
+    needs: converter
+    if: ${{ inputs.upload_to_mega }}
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.project_name }}_mobile
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to MEGA using Docker
+        env:
+          PROJECT_NAME: ${{ inputs.project_name }}
+          MEGA_USERNAME: ${{ secrets.MEGA_USERNAME }}
+          MEGA_PASSWORD: ${{ secrets.MEGA_PASSWORD }}
+          MEGA_FOLDER: ${{ secrets.MEGA_FOLDER }}
+        run: |
+          if [ -z "${MEGA_USERNAME}" ] || [ -z "${MEGA_PASSWORD}" ]; then
+            echo "::error::upload_to_mega=true, но секреты MEGA_USERNAME/MEGA_PASSWORD не переданы"
+            exit 1
+          fi
+          MEGA_FOLDER_VALUE="${MEGA_FOLDER:-/}"
+
+          docker run --rm \
+            -v "${{ github.workspace }}:/data" \
+            -e MEGA_USERNAME \
+            -e MEGA_PASSWORD \
+            -e MEGA_FOLDER="${MEGA_FOLDER_VALUE}" \
+            -e PROJECT_NAME \
+            "${MEGACMD_IMAGE}" \
+            sh -c '
+              set -e
+              mega-login "$MEGA_USERNAME" "$MEGA_PASSWORD"
+              mega-put "/data/${PROJECT_NAME}.zip" "$MEGA_FOLDER"
+              MEGA_URL=$(mega-export -a "$MEGA_FOLDER/${PROJECT_NAME}.zip" | grep -o "https.*")
+              echo "File uploaded to MEGA: $MEGA_URL"
+              mega-logout
+            '
