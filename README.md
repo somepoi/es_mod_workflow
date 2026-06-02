@@ -152,6 +152,8 @@ name: Deploy to Steam Workshop
 
 on:
   workflow_dispatch:
+  release:
+    types: [published]
 
 jobs:
   deploy:
@@ -209,13 +211,15 @@ on:
         required: false
         type: boolean
         default: false
+  release:
+    types: [published]
 
 jobs:
   build:
     uses: somepoi/es_mod_workflow/.github/workflows/build_mobile.yml@v3.0.3
     with:
-      project_name: "pioneriada"                       # ОБЯЗАТЕЛЬНО: название мода
-      upload_to_mega: ${{ inputs.upload_to_mega }}     # Загружать ли на MEGA
+      project_name: "pioneriada"                                          # ОБЯЗАТЕЛЬНО: название мода
+      upload_to_mega: ${{ github.event_name == 'release' || inputs.upload_to_mega }}     # Загружать ли на MEGA
       image_owner: "somepoi"                           # GHCR-неймспейс с образами (по умолчанию somepoi)
       image_tag: "latest"                              # Тег образов
     secrets:
