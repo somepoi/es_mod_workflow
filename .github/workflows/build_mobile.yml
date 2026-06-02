@@ -60,6 +60,7 @@ permissions:
 env:
   CONVERTER_IMAGE: ghcr.io/${{ inputs.image_owner }}/es_mod_workflow-estool-converter:${{ inputs.image_tag }}
   MEGACMD_IMAGE: ghcr.io/${{ inputs.image_owner }}/es_mod_workflow-megacmd:${{ inputs.image_tag }}
+  GDRIVE_IMAGE: ghcr.io/${{ inputs.image_owner }}/es_mod_workflow-gdrive:${{ inputs.image_tag }}
 
 jobs:
   build:
@@ -88,10 +89,10 @@ jobs:
           exit "$fail"
 
       - name: Checkout caller repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.3
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -143,10 +144,6 @@ jobs:
               mega-logout
             '
 
-      - name: Install rclone
-        if: ${{ inputs.upload_to_gdrive }}
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rclone
-
       - name: Upload to Google Drive
         if: ${{ inputs.upload_to_gdrive }}
         env:
@@ -161,10 +158,15 @@ jobs:
           [gdrive]
           type = drive
           scope = drive
-          service_account_file = ${RCLONE_CFG_DIR}/sa.json
+          service_account_file = /config/sa.json
           root_folder_id = ${GDRIVE_FOLDER_ID}
           EOF
-          rclone --config "${RCLONE_CFG_DIR}/rclone.conf" copy "${PROJECT_NAME}.zip" "gdrive:" --progress
+          docker run --rm \
+            -v "${{ github.workspace }}:/data" \
+            -v "${RCLONE_CFG_DIR}:/config:ro" \
+            -e PROJECT_NAME \
+            "${GDRIVE_IMAGE}" \
+            --config /config/rclone.conf copy "/data/${PROJECT_NAME}.zip" "gdrive:" --progress
           echo "File uploaded to Google Drive folder: ${GDRIVE_FOLDER_ID}"
 
       - name: Cleanup gdrive credentials

@@ -20,3 +20,12 @@ services:
         - "org.opencontainers.image.title=MEGAcmd Uploader"
         - "org.opencontainers.image.description=Загрузчик файлов на MEGA"
     image: ghcr.io/${IMAGE_OWNER:-somepoi}/es_mod_workflow-megacmd:${IMAGE_TAG:-latest}
+
+  gdrive:
+    build:
+      context: .
+      dockerfile: gdrive.Dockerfile
+      labels:
+        - "org.opencontainers.image.title=Google Drive Uploader"
+        - "org.opencontainers.image.description=Загрузчик файлов на Google Drive"
+    image: ghcr.io/${IMAGE_OWNER:-somepoi}/es_mod_workflow-gdrive:${IMAGE_TAG:-latest}

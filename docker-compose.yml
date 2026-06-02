@@ -3,6 +3,7 @@
 #   PROJECT_NAME=mymod docker-compose up converter
 #   PROJECT_NAME=mymod docker-compose --profile archive up
 #   PROJECT_NAME=mymod MEGA_USERNAME=... MEGA_PASSWORD=... docker-compose --profile upload-mega up
+#   PROJECT_NAME=mymod GDRIVE_SERVICE_ACCOUNT_FILE=./sa.json GDRIVE_FOLDER_ID=... docker-compose --profile upload-gdrive up
 
 services:
   converter:
@@ -43,6 +44,33 @@ services:
     restart: "no"
     profiles:
       - upload-mega
+
+  upload-gdrive:
+    image: ghcr.io/${IMAGE_OWNER:-somepoi}/es_mod_workflow-gdrive:${IMAGE_TAG:-latest}
+    container_name: ${PROJECT_NAME:?PROJECT_NAME env var is required}-upload-gdrive
+    depends_on:
+      converter:
+        condition: service_completed_successfully
+    volumes:
+      - ./output:/data
+      - ${GDRIVE_SERVICE_ACCOUNT_FILE:?GDRIVE_SERVICE_ACCOUNT_FILE env var is required}:/config/sa.json:ro
+    environment:
+      - PROJECT_NAME=${PROJECT_NAME}
+      - RCLONE_CONFIG_GDRIVE_TYPE=drive
+      - RCLONE_CONFIG_GDRIVE_SCOPE=drive
+      - RCLONE_CONFIG_GDRIVE_SERVICE_ACCOUNT_FILE=/config/sa.json
+      - RCLONE_CONFIG_GDRIVE_ROOT_FOLDER_ID=${GDRIVE_FOLDER_ID:?GDRIVE_FOLDER_ID env var is required}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        cd /data
+        zip -r "$${PROJECT_NAME}.zip" "$${PROJECT_NAME}"
+        rclone copy "$${PROJECT_NAME}.zip" gdrive: --progress
+        echo "Uploaded to Google Drive folder: $${RCLONE_CONFIG_GDRIVE_ROOT_FOLDER_ID}"
+    restart: "no"
+    profiles:
+      - upload-gdrive
 
   archiver:
     image: alpine:latest
