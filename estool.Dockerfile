@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 # Базовый образ с ESTool для конвертации Ren'Py проектов в мобильный порт
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 # Метаданные образа
 LABEL org.opencontainers.image.title="ESTool Mobile Converter"
-LABEL org.opencontainers.image.description="Конвертер модов в мобильный порт (универсальный, переиспользуемый для любого мода)"
+LABEL org.opencontainers.image.description="Конвертер модов в мобильный порт"
 LABEL org.opencontainers.image.source="https://github.com/somepoi/es_mod_workflow"
 
 # Устанавливаем переменные окружения для неинтерактивной установки
@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     gettext-base \
     && rm -rf /var/lib/apt/lists/* \
-    && pip3 install --no-cache-dir Pillow==10.2.0
+    && pip3 install --no-cache-dir --break-system-packages Pillow==10.2.0
 
 # Рабочая директория
 WORKDIR /app

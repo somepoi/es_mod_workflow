@@ -15,7 +15,7 @@ echo "ESTool Mobile Port Conversion"
 echo "========================================="
 
 # Обязательный параметр - имя мода (определяет имена папок/архива и virtual_root)
-: "${PROJECT_NAME:?PROJECT_NAME env var is required (e.g. 'pioneriada')}"
+: "${PROJECT_NAME:?PROJECT_NAME env var is required}"
 
 # Опциональный параметр - папка результата ESTool, по умолчанию ${PROJECT_NAME}_android
 PROJECT_ANDROID="${PROJECT_ANDROID:-${PROJECT_NAME}_android}"
