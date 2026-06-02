@@ -37,6 +37,11 @@ on:
         required: true
         type: string
         default: "1"
+      yq_version:
+        description: "Версия mikefarah/yq"
+        required: false
+        type: string
+        default: "v4.45.4"
     secrets:
       STEAM_SHARED_SECRET:
         description: "Steam Shared Secret"
@@ -49,15 +54,7 @@ on:
         required: true
 
 jobs:
-  download-tools:
-    uses: ./.github/workflows/download_tools.yml
-    with:
-      sdk_version: ${{ inputs.sdk_version }}
-      google_drive_id: ${{ inputs.google_drive_id }}
-      es_ver: ${{ inputs.es_ver }}
-
   deploy:
-    needs: download-tools
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -66,7 +63,7 @@ jobs:
       - name: Checkout scripts
         uses: actions/checkout@v6.0.2
         with:
-          repository: zImpact/es_mod_workflow
+          repository: somepoi/es_mod_workflow
           path: scripts
           sparse-checkout: |
             check_lint_status.sh
@@ -80,52 +77,77 @@ jobs:
         run: |
           chmod +x ./scripts/check_lint_status.sh
           ./scripts/check_lint_status.sh "${{ inputs.lint_workflow_file }}" "${{ inputs.branch }}" "basic-lint"
-      
-      - name: Set up cache for SDK
+
+      - name: Restore Ren'Py SDK cache
         id: cache-sdk
         uses: actions/cache@v5.0.5
         with:
           path: "~/.renpy-sdk"
           key: ${{ runner.os }}-renpy-sdk-${{ inputs.sdk_version }}
 
-      - name: Set up cache for Everlasting Summer game files
+      - name: Download Ren'Py SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.renpy-sdk
+          wget -q "https://www.renpy.org/dl/${{ inputs.sdk_version }}/renpy-${{ inputs.sdk_version }}-sdk.tar.bz2"
+          tar -xjf "renpy-${{ inputs.sdk_version }}-sdk.tar.bz2" -C ~/.renpy-sdk
+          rm "renpy-${{ inputs.sdk_version }}-sdk.tar.bz2"
+
+      - name: Restore Everlasting Summer game files cache
         id: cache-game
         uses: actions/cache@v5.0.5
         with:
           path: "./game_files"
           key: ${{ runner.os }}-everlasting-summer-${{ inputs.es_ver }}-${{ inputs.google_drive_id }}
-      
-      - name: Install jq and yq
+
+      - name: Download Everlasting Summer
+        if: steps.cache-game.outputs.cache-hit != 'true'
+        env:
+          GDRIVE_ID: ${{ inputs.google_drive_id }}
+        run: |
+          mkdir -p ./game_files
+          python3 -m pip install --quiet gdown
+          for i in 1 2 3; do
+            gdown "${GDRIVE_ID}" -O "Everlasting Summer.zip" && break
+            echo "gdown attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          unzip -q "Everlasting Summer.zip" -d "./game_files"
+          rm "Everlasting Summer.zip"
+
+      - name: Install tooling (jq, yq, md2steam)
+        env:
+          YQ_VERSION: ${{ inputs.yq_version }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq
-          sudo wget https://github.com/mikefarah/yq/releases/download/v4.30.8/yq_linux_amd64 -O /usr/local/bin/yq
+          sudo apt-get install -y --no-install-recommends jq
+          sudo wget -q "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" -O /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
-      
-      - name: Copy mod files to game directory
+          pip3 install --quiet md2steam
+
+      - name: Resolve project name
         run: |
           PROJECT_NAME=$(yq eval '.project_name' '${{ inputs.steam_config_path }}')
-          mkdir -p "./game_files/Everlasting Summer/game/$PROJECT_NAME"
-          rsync -av --exclude='game_files' --exclude='.git' . "./game_files/Everlasting Summer/game/$PROJECT_NAME"
-      
+          echo "PROJECT_NAME=${PROJECT_NAME}" >> "$GITHUB_ENV"
+
+      - name: Copy mod files to game directory
+        run: |
+          mkdir -p "./game_files/Everlasting Summer/game/${PROJECT_NAME}"
+          rsync -a --exclude='game_files' --exclude='.git' --exclude='scripts' . "./game_files/Everlasting Summer/game/${PROJECT_NAME}"
+
       - name: Compile Ren'Py scripts
         run: |
           ~/.renpy-sdk/renpy-${{ inputs.sdk_version }}-sdk/renpy.sh "./game_files/Everlasting Summer/game/" compile
-      
-      - name: Copy compiled files to repository
+
+      - name: Copy compiled .rpyc back to repository
         run: |
-          PROJECT_NAME=$(yq eval '.project_name' '${{ inputs.steam_config_path }}')
-          rsync -av "./game_files/Everlasting Summer/game/$PROJECT_NAME/" .
+          rsync -a \
+            --include='*/' --include='*.rpyc' --exclude='*' \
+            "./game_files/Everlasting Summer/game/${PROJECT_NAME}/" .
 
       - name: Install SteamCMD
         uses: CyberAndrii/setup-steamcmd@v1.2.0
 
-      - name: Setup Python and install md2steam
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3 python3-pip
-          pip3 install md2steam
-        
       - name: Generate Steam Guard 2FA code
         id: steam-2fa
         uses: CyberAndrii/steam-totp@v1.1.0
@@ -133,6 +155,11 @@ jobs:
           shared_secret: ${{ secrets.STEAM_SHARED_SECRET }}
 
       - name: Deploy to Steam Workshop
+        env:
+          STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+          STEAM_PASSWORD: ${{ secrets.STEAM_PASSWORD }}
+          STEAM_TOTP: ${{ steps.steam-2fa.outputs.code }}
+          STEAM_CONFIG_PATH: ${{ inputs.steam_config_path }}
         run: |
           chmod +x ./scripts/deploy_to_steam.sh
-          ./scripts/deploy_to_steam.sh "${{ secrets.STEAM_USERNAME }}" "${{ secrets.STEAM_PASSWORD }}" "${{ steps.steam-2fa.outputs.code }}" "${{ inputs.steam_config_path }}"
+          ./scripts/deploy_to_steam.sh

@@ -1,9 +1,11 @@
 #!/bin/bash
 
-STEAM_USER=$1
-STEAM_PASS=$2
-STEAM_2FA=$3
-CONFIG_PATH=$4
+: "${STEAM_USERNAME:?STEAM_USERNAME не задан}"
+: "${STEAM_PASSWORD:?STEAM_PASSWORD не задан}"
+: "${STEAM_TOTP:?STEAM_TOTP не задан}"
+: "${STEAM_CONFIG_PATH:?STEAM_CONFIG_PATH не задан}"
+
+CONFIG_PATH="$STEAM_CONFIG_PATH"
 
 if [ ! -f "$CONFIG_PATH" ]; then
   echo "Ошибка: Конфигурационный файл $CONFIG_PATH не найден!"
@@ -20,7 +22,23 @@ fi
 PUBLISHED_ID=$(yq eval '.publishedfileid' "$CONFIG_PATH")
 VISIBILITY=$(yq eval '.visibility' "$CONFIG_PATH")
 TITLE=$(yq eval '.title' "$CONFIG_PATH")
-CHANGE_NOTE=$(yq eval '.changenote' "$CONFIG_PATH")
+CHANGE_NOTE=""
+if [ -f "CHANGELOG.md" ]; then
+  CHANGELOG_BLOCK=$(awk '/^## [0-9]/{ if (found) exit; found=1 } found' CHANGELOG.md)
+  if [ -n "$CHANGELOG_BLOCK" ]; then
+    CHANGELOG_VERSION=$(echo "$CHANGELOG_BLOCK" | head -n1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1)
+    if [ -n "$CHANGELOG_VERSION" ]; then
+      echo "Версия из CHANGELOG.md: $CHANGELOG_VERSION"
+      CHANGE_NOTE="$CHANGELOG_BLOCK"
+    else
+      echo "Предупреждение: не удалось извлечь номер версии из первого заголовка CHANGELOG.md, описание обновления будет пустым"
+    fi
+  else
+    echo "Предупреждение: в CHANGELOG.md не найдено ни одной версии, описание обновления будет пустым"
+  fi
+else
+  echo "Предупреждение: CHANGELOG.md не найден, описание обновления будет пустым"
+fi
 APPID=$(yq eval '.appid' "$CONFIG_PATH")
 PREVIEW_FILENAME_PATH=$(yq eval '.previewfile' "$CONFIG_PATH")
 PREVIEW_FILE="$(pwd)/${PREVIEW_FILENAME_PATH}"
@@ -83,5 +101,5 @@ VDF
 echo "Вывод workshop.vdf для дебага:"
 cat workshop.vdf
 
-steamcmd +login "$STEAM_USER" "$STEAM_PASS" "$STEAM_2FA" \
+steamcmd +login "$STEAM_USERNAME" "$STEAM_PASSWORD" "$STEAM_TOTP" \
          +workshop_build_item "$(pwd)/workshop.vdf" +quit
