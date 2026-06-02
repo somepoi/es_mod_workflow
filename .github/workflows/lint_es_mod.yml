@@ -78,7 +78,7 @@ jobs:
     needs: download-tools
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
 
       - name: Run Marker Linter
         uses: zImpact/renpy_marker_linter@v1.0.2
@@ -92,7 +92,7 @@ jobs:
     needs: download-tools
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
 
       - name: Run Text Linter
         uses: zImpact/renpy_text_linter@v1.0.13
@@ -107,7 +107,7 @@ jobs:
     needs: download-tools
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
 
       - name: Set up cache for SDK
         id: cache-sdk
@@ -147,7 +147,7 @@ jobs:
     needs: download-tools
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
 
       - name: Run Code Linter
         uses: zImpact/renpy_code_linter@v1.0.1
