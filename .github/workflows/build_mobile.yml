@@ -16,6 +16,11 @@ on:
         required: false
         type: boolean
         default: false
+      upload_to_gdrive:
+        description: "Загружать ли итоговый архив на Google Drive"
+        required: false
+        type: boolean
+        default: false
       image_owner:
         description: "Владелец GHCR-неймспейса с образами es_mod_workflow-* (по умолчанию somepoi)"
         required: false
@@ -41,6 +46,12 @@ on:
       MEGA_FOLDER:
         description: "Папка на MEGA, в которую загрузить архив"
         required: false
+      GDRIVE_SERVICE_ACCOUNT_JSON:
+        description: "JSON ключа сервисного аккаунта Google Drive (base64-кодированный)"
+        required: false
+      GDRIVE_FOLDER_ID:
+        description: "ID папки на Google Drive, в которую загрузить архив"
+        required: false
 
 permissions:
   contents: read
@@ -51,11 +62,31 @@ env:
   MEGACMD_IMAGE: ghcr.io/${{ inputs.image_owner }}/es_mod_workflow-megacmd:${{ inputs.image_tag }}
 
 jobs:
-  converter:
-    name: Converter
+  build:
+    name: Build & Upload
     runs-on: ubuntu-latest
 
     steps:
+      - name: Pre-flight validate upload secrets
+        env:
+          UPLOAD_MEGA: ${{ inputs.upload_to_mega }}
+          UPLOAD_GDRIVE: ${{ inputs.upload_to_gdrive }}
+          MEGA_USERNAME: ${{ secrets.MEGA_USERNAME }}
+          MEGA_PASSWORD: ${{ secrets.MEGA_PASSWORD }}
+          GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+        run: |
+          fail=0
+          if [ "${UPLOAD_MEGA}" = "true" ] && { [ -z "${MEGA_USERNAME}" ] || [ -z "${MEGA_PASSWORD}" ]; }; then
+            echo "::error::upload_to_mega=true, но секреты MEGA_USERNAME/MEGA_PASSWORD не переданы"
+            fail=1
+          fi
+          if [ "${UPLOAD_GDRIVE}" = "true" ] && { [ -z "${GDRIVE_SERVICE_ACCOUNT_JSON}" ] || [ -z "${GDRIVE_FOLDER_ID}" ]; }; then
+            echo "::error::upload_to_gdrive=true, но секреты GDRIVE_SERVICE_ACCOUNT_JSON/GDRIVE_FOLDER_ID не переданы"
+            fail=1
+          fi
+          exit "$fail"
+
       - name: Checkout caller repository
         uses: actions/checkout@v4
 
@@ -65,9 +96,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull converter image
-        run: docker pull "${CONVERTER_IMAGE}"
 
       - name: Run mobile conversion
         run: |
@@ -90,38 +118,15 @@ jobs:
           path: ${{ inputs.project_name }}.zip
           retention-days: ${{ inputs.artifact_retention_days }}
 
-  upload-mega:
-    name: Upload MEGA
-    runs-on: ubuntu-latest
-    needs: converter
-    if: ${{ inputs.upload_to_mega }}
-
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ inputs.project_name }}_mobile
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload to MEGA using Docker
+      - name: Upload to MEGA
+        if: ${{ inputs.upload_to_mega }}
         env:
           PROJECT_NAME: ${{ inputs.project_name }}
           MEGA_USERNAME: ${{ secrets.MEGA_USERNAME }}
           MEGA_PASSWORD: ${{ secrets.MEGA_PASSWORD }}
           MEGA_FOLDER: ${{ secrets.MEGA_FOLDER }}
         run: |
-          if [ -z "${MEGA_USERNAME}" ] || [ -z "${MEGA_PASSWORD}" ]; then
-            echo "::error::upload_to_mega=true, но секреты MEGA_USERNAME/MEGA_PASSWORD не переданы"
-            exit 1
-          fi
           MEGA_FOLDER_VALUE="${MEGA_FOLDER:-/}"
-
           docker run --rm \
             -v "${{ github.workspace }}:/data" \
             -e MEGA_USERNAME \
@@ -137,3 +142,31 @@ jobs:
               echo "File uploaded to MEGA: $MEGA_URL"
               mega-logout
             '
+
+      - name: Install rclone
+        if: ${{ inputs.upload_to_gdrive }}
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rclone
+
+      - name: Upload to Google Drive
+        if: ${{ inputs.upload_to_gdrive }}
+        env:
+          PROJECT_NAME: ${{ inputs.project_name }}
+          GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+        run: |
+          RCLONE_CFG_DIR="${RUNNER_TEMP}/rclone"
+          mkdir -p "${RCLONE_CFG_DIR}"
+          echo "${GDRIVE_SERVICE_ACCOUNT_JSON}" | base64 --decode > "${RCLONE_CFG_DIR}/sa.json"
+          cat > "${RCLONE_CFG_DIR}/rclone.conf" <<EOF
+          [gdrive]
+          type = drive
+          scope = drive
+          service_account_file = ${RCLONE_CFG_DIR}/sa.json
+          root_folder_id = ${GDRIVE_FOLDER_ID}
+          EOF
+          rclone --config "${RCLONE_CFG_DIR}/rclone.conf" copy "${PROJECT_NAME}.zip" "gdrive:" --progress
+          echo "File uploaded to Google Drive folder: ${GDRIVE_FOLDER_ID}"
+
+      - name: Cleanup gdrive credentials
+        if: ${{ always() && inputs.upload_to_gdrive }}
+        run: rm -rf "${RUNNER_TEMP}/rclone"
