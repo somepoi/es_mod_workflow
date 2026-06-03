@@ -21,6 +21,11 @@ on:
         required: false
         type: boolean
         default: false
+      install_autoinit:
+        description: "Скачать последний релиз https://github.com/somepoi/autoinit и положить его в папку проекта"
+        required: false
+        type: boolean
+        default: false
       image_owner:
         description: "Владелец GHCR-неймспейса с образами es_mod_workflow-* (по умолчанию somepoi)"
         required: false
@@ -106,6 +111,45 @@ jobs:
             -v "${{ github.workspace }}:/app/source:ro" \
             -v "${{ github.workspace }}/output:/output" \
             "${CONVERTER_IMAGE}"
+
+      - name: Install autoinit
+        if: ${{ inputs.install_autoinit }}
+        env:
+          PROJECT_NAME: ${{ inputs.project_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          MOD_DIR="output/${PROJECT_NAME}"
+          if [ ! -d "${MOD_DIR}" ]; then
+            echo "::error::Папка ${MOD_DIR} не найдена в мобильном порте, autoinit устанавливать некуда"
+            exit 1
+          fi
+          AUTOINIT_DIR="${MOD_DIR}/autoinit"
+          mkdir -p "${AUTOINIT_DIR}"
+
+          TMP=$(mktemp -d)
+          # Качаем zip-архив исходников последнего релиза через официальный gh CLI
+          # (предустановлен на ubuntu-latest, без аргумента tag берёт latest release)
+          gh release download \
+            --repo somepoi/autoinit \
+            --archive=zip \
+            --dir "${TMP}"
+
+          ARCHIVE=$(find "${TMP}" -maxdepth 1 -name '*.zip' | head -n1)
+          [ -n "${ARCHIVE}" ] || { echo "::error::gh release download не вернул zip"; exit 1; }
+
+          unzip -q "${ARCHIVE}" -d "${TMP}/extracted"
+          INNER=$(find "${TMP}/extracted" -mindepth 1 -maxdepth 1 -type d | head -n1)
+          [ -n "${INNER}" ] || { echo "::error::Не удалось найти содержимое архива autoinit"; exit 1; }
+
+          # Чистим то, что не нужно тащить в мод
+          rm -rf "${INNER}/.git" "${INNER}/.github"
+          rm -f "${INNER}/.gitattributes" "${INNER}/.gitignore" \
+                "${INNER}/README.md" "${INNER}/example.rpy"
+
+          cp -r "${INNER}/." "${AUTOINIT_DIR}/"
+          rm -rf "${TMP}"
+          echo "autoinit установлен в ${AUTOINIT_DIR}"
 
       - name: Create archive
         run: |
