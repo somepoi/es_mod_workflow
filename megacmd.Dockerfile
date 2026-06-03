@@ -1,6 +1,5 @@
 FROM ubuntu:24.04
 
-# Метаданные образа
 LABEL org.opencontainers.image.title="MEGAcmd Uploader"
 LABEL org.opencontainers.image.description="Загрузчик файлов на MEGA"
 LABEL org.opencontainers.image.source="https://github.com/somepoi/es_mod_workflow"

@@ -14,10 +14,10 @@ echo "========================================="
 echo "ESTool Mobile Port Conversion"
 echo "========================================="
 
-# Обязательный параметр - имя мода (определяет имена папок/архива и virtual_root)
+# имя мода (определяет имена папок/архива и virtual_root)
 : "${PROJECT_NAME:?PROJECT_NAME env var is required}"
 
-# Опциональный параметр - папка результата ESTool, по умолчанию ${PROJECT_NAME}_android
+# папка, куда ESTool скидывает конвертированный мод, по умолчанию ${PROJECT_NAME}_android
 PROJECT_ANDROID="${PROJECT_ANDROID:-${PROJECT_NAME}_android}"
 
 echo "Project:         ${PROJECT_NAME}"
@@ -26,12 +26,12 @@ echo "========================================="
 
 cd /app || error_exit "Failed to change directory to /app" 1
 
-# Активируем общий ESTool-файл для мобильного порта (если есть .disabled-версия)
+# включаем фиксы спрайты на мобилки от лолбота
 if [ -f "/app/ESTool/sprites_lol.rpy.disabled" ]; then
     cp /app/ESTool/sprites_lol.rpy.disabled /app/ESTool/sprites_lol.rpy
 fi
 
-# Удаляем старую копию если есть
+# сносим старую копию если есть
 if [ -d "/app/${PROJECT_NAME}" ]; then
     rm -rf "/app/${PROJECT_NAME}" || error_exit "Failed to remove old ${PROJECT_NAME}" 1
 fi
@@ -58,7 +58,7 @@ fi
 [ -d "ESTool" ] || error_exit "ESTool folder not found!" 1
 [ -d "${PROJECT_NAME}" ] || error_exit "${PROJECT_NAME} folder not found!" 1
 
-# Генерируем config.py из шаблона (подставляем PROJECT_NAME / PROJECT_ANDROID)
+# Генерируем config.py из шаблона
 if [ -f "/app/ESTool/config.template.py" ]; then
     export PROJECT_NAME PROJECT_ANDROID
     envsubst '${PROJECT_NAME} ${PROJECT_ANDROID}' \
@@ -76,14 +76,13 @@ python3 /app/ESTool/estool-1.001.py \
     --log /app/ESTool/estool.log \
     || error_exit "ESTool conversion failed!" 1
 
-# Удаляем оригинальную папку и переименовываем результат
+# Сносим оригинальной мод, оставляем сконвертированный мод, переименовываем его обратно в исходное имя мода
 rm -rf "${PROJECT_NAME}" || error_exit "Failed to remove ${PROJECT_NAME}" 1
 mv "${PROJECT_ANDROID}" "${PROJECT_NAME}" \
     || error_exit "Failed to rename ${PROJECT_ANDROID}" 1
 
 [ -d "${PROJECT_NAME}" ] || error_exit "${PROJECT_NAME} folder not found after rename!" 1
 
-# Показываем краткую статистику из лога
 if [ -f "/app/ESTool/estool.log" ]; then
     echo ""
     echo "=== ESTool Log Summary ==="
