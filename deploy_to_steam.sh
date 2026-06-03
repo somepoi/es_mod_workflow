@@ -45,6 +45,63 @@ PREVIEW_FILE="$(pwd)/${PREVIEW_FILENAME_PATH}"
 PROJECT_NAME=$(yq eval '.project_name' "$CONFIG_PATH")
 EXCLUSIONS=$(yq eval '.exclusions[]' "$CONFIG_PATH")
 
+WITHOUT_SOURCES=$(yq eval '.without_sources // false' "$CONFIG_PATH")
+
+declare -A TAG_MAP=(
+  ["Алиса"]="Alisa"
+  ["Лена"]="Lena"
+  ["Славя"]="Slavya"
+  ["Ульяна"]="Ulyana"
+  ["Юля"]="Yulya"
+  ["Мику"]="Miku"
+  ["Женя"]="Zhenya"
+  ["Ольга Дмитриевна"]="Olga Dmitrievna"
+  ["Семён"]="Semyon"
+  ["Семен"]="Semyon"
+  ["Электроник"]="Electronik"
+  ["Шурик"]="Shurik"
+  ["Маша"]="Masha"
+  ["Виола"]="Viola"
+  ["Пионер"]="Pioneer"
+  ["Новый персонаж"]="New character"
+  ["Фантастика"]="Sci-fi"
+  ["Мистика"]="Mystic"
+  ["Повседневность"]="Slice of life"
+  ["Романтика"]="Romance"
+  ["Комедия"]="Comedy"
+  ["Детектив"]="Mystery"
+  ["Драма"]="Drama"
+  ["Экшн"]="Action"
+  ["Хоррор"]="Horror"
+  ["Трэш"]="Trash"
+  ["Приключения"]="Adventure"
+  ["Триллер"]="Thriller"
+  ["Линейный"]="Linear"
+  ["С выборами"]="Variative"
+  ["Технический"]="Technical"
+)
+
+TAGS_BLOCK=""
+TAGS_LIST=$(yq eval '[.tags // [], .heroes // [], .genres // [], .mod_type // []] | flatten | unique | .[]' "$CONFIG_PATH")
+TAGS_LINES=""
+IDX=0
+declare -A SEEN_TAGS=()
+while IFS= read -r tag; do
+  [ -z "$tag" ] && continue
+  english_tag="${TAG_MAP[$tag]:-$tag}"
+  if [ -n "${SEEN_TAGS[$english_tag]:-}" ]; then
+    continue
+  fi
+  SEEN_TAGS["$english_tag"]=1
+  TAGS_LINES+=$'\n    "'"$IDX"'" "'"$english_tag"'"'
+  IDX=$((IDX + 1))
+done <<< "$TAGS_LIST"
+if [ "$IDX" -gt 0 ]; then
+  TAGS_BLOCK=$'\n  "tags"\n  {'"$TAGS_LINES"$'\n  }'
+  echo "Теги Workshop ($IDX шт.):"
+  printf '  %s\n' "${!SEEN_TAGS[@]}"
+fi
+
 if [ -z "$APPID" ] || [ "$APPID" = "null" ]; then
   echo "Ошибка: Steam appid не указан в $CONFIG_PATH"
   exit 1
@@ -61,6 +118,10 @@ for pattern in $EXCLUSIONS; do
 done
 RSYNC_EXCLUDES+=" --exclude=${PROJECT_NAME}"
 RSYNC_EXCLUDES+=" --exclude=build"
+if [ "$WITHOUT_SOURCES" = "true" ]; then
+  RSYNC_EXCLUDES+=" --exclude=*.rpy"
+  echo "Режим 'Загрузить без исходников' включён — *.rpy будут исключены из загрузки"
+fi
 echo "Исключения для rsync: ${RSYNC_EXCLUDES}"
 
 BUILD_PARENT="${SOURCE_FOLDER}/build"
@@ -94,7 +155,7 @@ cat > workshop.vdf <<VDF
   "title" "$TITLE"
   "description" "$DESCRIPTION"
   "changenote" "$CHANGE_NOTE"
-  "previewfile" "$PREVIEW_FILE"
+  "previewfile" "$PREVIEW_FILE"${TAGS_BLOCK}
 }
 VDF
 
